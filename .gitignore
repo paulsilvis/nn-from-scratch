@@ -1,6 +1,6 @@
 # generated output
-*/plots/*
-!*/plots/.gitkeep
+**/plots/*
+!**/plots/.gitkeep
 
 # datasets
 04_mnist/data/*
