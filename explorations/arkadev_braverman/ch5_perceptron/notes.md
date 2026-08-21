@@ -122,6 +122,52 @@ using a trailing window) can make algorithm 1 look competitive with,
 or even better than, algorithm 2 purely from noise — an early run at
 default settings did show exactly that inversion before this fix.
 
+**Follow-up: why is 8-vs-9 hard, and does it ever actually converge?**
+Two things worth separating out, checked after the initial pass above:
+
+- *Why 8-vs-9 is hard*: Ch. 2's own `compactness_report` on these
+  binarized codes shows digit 8 (same-class-neighbor margin 1.56) and
+  digit 9 (margin 1.98) have the two *smallest* margins of any digit
+  in the corpus — versus digit 0's margin of 5.32, the *largest* of
+  any digit, and digit 1's 2.63 (still comfortably above either 8 or
+  9). Visually, 8 and 9 share a closed loop at the top and a
+  down-right trailing stroke; at 8x8 resolution a meaningful fraction
+  of examples are genuinely ambiguous between them. This is exactly
+  the mechanism sec. 4's potential-method analogy would predict: a
+  low receptor-space margin means few of the random A-element planes
+  cleanly separate the two classes, so both algorithms need more
+  corrective evidence to settle on a working combination.
+- *Does more training resolve it?* At just 40 presentations/class,
+  neither algorithm had actually converged — per-trial tails bounce
+  unpredictably enough that algorithm 1 sometimes edges out algorithm
+  2 at the very last data point (a coin flip from residual
+  oscillation, not a reversal of which algorithm is better). Rerunning
+  at 150 presentations/class (5-trial average) resolves this cleanly:
+  algorithm 2 settles into a stable ~15-20-point lead over algorithm 1
+  for nearly the entire run (86-96% vs. 60-74% through most of
+  training), rather than the ambiguous ordering seen at 40. Neither
+  algorithm fully flatlines at 100% the way the easy pair eventually
+  does — both keep oscillating somewhat even at 150/class — but the
+  *ranking* becomes unambiguous well before that point. So 8-vs-9
+  isn't unsolvable at this A-element budget; the 40-presentation
+  comparison above was simply cut short relative to how much evidence
+  a low-margin pair needs. (Not run to full convergence or added as a
+  permanent `experiment.py` function, to keep the headline comparison
+  at a consistent, book-comparable presentation count — this was a
+  one-off diagnostic check, saved as `plots/algo_comparison_8_9_long.png`.)
+- *A related correction on algorithm 1's easy-pair number*: checking
+  the un-averaged per-trial tails for 0-vs-1 shows algorithm 1 does
+  eventually reach ~94-100% in 4 of 5 trials by presentation 80 — it's
+  simply slower to get there than algorithm 2, climbing steadily
+  rather than jumping early. The 79.7% reported above (mean of the
+  last 20 rolling-reliability points) partly captures that slow climb
+  rather than the true endpoint, understating how close the two
+  algorithms end up on an easy, well-separated pair. This is a real,
+  if small, divergence from the book's own letters result (Fig. 53),
+  where algorithm 1 hits a *hard* ceiling that more training does not
+  move past at all — on this easy digit pair, algorithm 1 isn't
+  capped, just slower.
+
 ### Ablation (cf. Fig. 58)
 
 Trained (algorithm 2) on digits 8 vs. 9, then measured held-out
@@ -221,3 +267,10 @@ table to check exact magnitudes against.
   natural next check, as is a sweep of inputs-per-A-element (the
   quick interactive check above suggests this matters more than raw
   A-element count for multiclass separation).
+- The 150-presentations/class long-run check (algorithm comparison
+  section above) resolved the 8-vs-9 ordering but wasn't extended to
+  the easy pair or wired into `experiment.py` as a proper function —
+  worth doing if a later stage wants a clean "reliability vs. training
+  length, held fixed A-element budget" curve per digit pair, closer
+  in spirit to Ch. 3/4's own reliability-vs-N curves than the
+  fixed-length runs used here.
