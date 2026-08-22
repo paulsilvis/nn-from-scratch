@@ -154,6 +154,71 @@ def plot_decision_region_2d(
     return fig
 
 
+def plot_surface_3d(grid_a, grid_b, surface, title, save_path=None):
+    """3D view of a loss surface (see loss_surface.py) - a static
+    picture of the bowl/saddle shape being descended.
+    """
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    fig = plt.figure(figsize=(6, 5))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot_surface(
+        grid_a, grid_b, surface, cmap="viridis", alpha=0.9, linewidth=0
+    )
+    ax.set_xlabel("w2_1")
+    ax.set_ylabel("w2_2")
+    ax.set_zlabel("loss")
+    ax.set_title(title)
+    fig.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=120)
+    plt.close(fig)
+    return fig
+
+
+def plot_contour_with_paths(
+    grid_a,
+    grid_b,
+    surface,
+    paths,
+    labels,
+    title,
+    save_path=None,
+):
+    """Top-down contour of a loss surface with one or more gradient
+    descent trajectories overlaid. `paths` is a list of (n_steps, 2)
+    arrays; `labels` a same-length list of legend names.
+    """
+    fig, ax = plt.subplots(figsize=(5.5, 5))
+    cs = ax.contourf(grid_a, grid_b, surface, levels=30, cmap="viridis")
+    fig.colorbar(cs, ax=ax, label="loss")
+
+    colors = ["#E24B4A", "#378ADD", "#F2A623"]
+    for i, (path, label) in enumerate(zip(paths, labels)):
+        color = colors[i % len(colors)]
+        ax.plot(
+            path[:, 0], path[:, 1], color=color, linewidth=1.5, label=label
+        )
+        ax.scatter(
+            path[0, 0], path[0, 1], color=color, marker="o", s=60, zorder=5
+        )
+        ax.scatter(
+            path[-1, 0], path[-1, 1], color=color, marker="x", s=80, zorder=5
+        )
+
+    ax.set_xlabel("w2_1")
+    ax.set_ylabel("w2_2")
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=9)
+    fig.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=120)
+    plt.close(fig)
+    return fig
+
+
 def plot_error_curve(errors_per_epoch, title, save_path=None):
     """Plot misclassification count per epoch: a convergence curve
     for AND/OR, and a curve that never reaches zero for XOR.
