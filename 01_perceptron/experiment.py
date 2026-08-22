@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Stage 1 experiments: train a Perceptron on AND, OR, and XOR.
 
 AND and OR converge to a separating line. XOR does not converge,

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Chapter 5's Perceptron, tested on real handwriting -- the direct
 analogue of the book's own Figs. 53/54/58 (MARK-1 on Roman letters),
 but on scikit-learn's `load_digits` corpus (1797 real handwritten

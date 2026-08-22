@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Chapter 3's dissecting-planes classifier, tested on real
 handwriting, reproducing the shape of the book's own
 reliability-vs-training-set-size curves (Ch. 3 sec. 2/4, Tables

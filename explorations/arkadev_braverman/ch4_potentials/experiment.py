@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Chapter 4's potentials-method classifier, tested on real
 handwriting -- the direct analogue of the book's own Fig. 42 and
 Tables XVII-XVIII experiments, but on scikit-learn's `load_digits`
