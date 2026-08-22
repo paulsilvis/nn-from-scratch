@@ -22,37 +22,53 @@ Sec. 1 -- Structure and Algorithm of the Perceptron:
   - R-element: N = sum_j A_j*y_j; output (the Perceptron's overall
     response) R = 1 if N >= 0, else 0. The A_j are the *only*
     trainable parameters; the receptor<->A-element wiring is fixed
-    for the whole experiment.
+    for the whole experiment. NOTE ON NOTATION: the book's actual
+    symbol for this per-A-element amplifier coefficient is lambda_j,
+    not A_j -- the extracted OCR text renders lambda as "A"
+    throughout this passage, and earlier work on this module
+    (including this variable's name, `a_weights`) followed that
+    garbled rendering before the page image was checked directly.
+    Left as `a_weights` here to avoid a disruptive rename of working
+    code, but doc comments below use the book's real symbol.
   - Two training algorithms, both restricted to a two-image problem
     (image a vs. image b), presented one example at a time:
-      Algorithm 1 (unconditional): on every step, A_j of every
-        *excited* A-element is nudged in the same fixed direction
-        determined solely by which image was shown, whether or not
-        the current response was already correct.
+      Algorithm 1 (unconditional): on every step, A_j (lambda_j) of
+        every *excited* A-element is nudged in the same fixed
+        direction determined solely by which image was shown,
+        whether or not the current response was already correct.
       Algorithm 2 (error-correcting, the classic perceptron rule):
-        A_j changes only on steps where the current response was
-        *wrong*, nudging excited A-elements' weights in the
-        direction that would have produced the correct output.
-    Both are one-sided in the book's literal statement (footnote,
-    p. 82: for the multi-image machine of Fig. 52, A_j "can only be
-    increased"); for the plain two-image machine of Fig. 51 that
-    this module implements, the direction is symmetric (+ for one
-    image, - for the other), matching the sec. 1 prose and the
-    worked example of sec. 3.
+        A_j (lambda_j) changes only on steps where the current
+        response was *wrong*, nudging excited A-elements' weights in
+        the direction that would have produced the correct output.
+    For the plain two-image machine of Fig. 51 that this module
+    implements, the direction is symmetric (+ for one image, - for
+    the other), matching the sec. 1 prose and the worked example of
+    sec. 3. The Fig. 52 multi-image machine's own algorithms are
+    one-sided instead (increase-only) -- see below.
   - Book's own results (Figs. 53/54, MARK-1 on 8 Roman letters):
     algorithm 1 plateaus near 70% reliability after 20-25 samples of
     each letter and does not improve further; algorithm 2 reaches
     ~100% after 35-40 samples. This qualitative gap -- 2 clearly
     better than 1, and 1 having a hard ceiling -- is the main thing
     checked against real digits in notes.md.
-  - Sec. 1 also notes the machine can be extended to more than two
-    images (Fig. 52: several groups of A-elements, each with its own
-    adder/R-element, either "biggest adder wins" or a binary-code
-    combination of R-element outputs). The book does not spell out a
-    training rule for this multi-image case beyond "analogous to"
-    the two-image one; `train_multiclass_algorithm_2` below is our
-    own one-vs-rest extension of algorithm 2 (flagged as such), used
-    only for the full 10-digit experiment.
+  - Sec. 1 also describes, and its footnote (p. 82) fully specifies
+    training for, a multi-image extension (Fig. 52): several image
+    classes share one A-element layer, but each A-element gets one
+    amplifier *per class* (lambda_ja, lambda_jb, ... not a single
+    A_j), each class's amplifiers feed a per-class adder, and a
+    comparison device picks the class whose adder is largest. This
+    architecture is what `MulticlassPerceptron` below implements --
+    book-literal, not an extension (an earlier pass through this
+    module mislabeled it as our own invention; see that class's
+    docstring for the full correction). The footnote's own training
+    rule -- coefficients "can only be increased"; algorithm 1
+    increases the *shown* class's amplifiers on every step, algorithm
+    2 does the same but only on error -- is implemented literally as
+    `train_multiclass_book_algorithm_1`/`_2`. `train_multiclass_ovr_
+    symmetric` is the one genuine extension in this module: a
+    standard symmetric multiclass-perceptron update (increase true
+    class, decrease wrongly-predicted class), not attested in the
+    book, kept for comparison.
 
 Sec. 2 -- Functions Performed by the A-elements:
 
@@ -301,14 +317,40 @@ def evaluate_ablation(
 
 @dataclass
 class MulticlassPerceptron:
-    """One-vs-rest extension of the two-image machine to C classes,
-    sharing a single A-element layer (Fig. 52's "several groups"
-    idea, but with one shared random projection rather than
-    per-class A-element groups -- see the docstring note in sec. 1
-    above: the book does not fully specify a multiclass training
-    rule, so this is our own extension, used only for the full
-    10-digit comparison, not attributed to the book as literal
-    content).
+    """The multi-image Perceptron of Fig. 52 (secs. 1's footnote,
+    p. 82; the figure itself, p. 79), read directly off the book
+    scan (the OCR text layer garbles this passage badly -- lambda
+    renders as "A" and sigma as "2" -- so this was read from the
+    page image, not the extracted text).
+
+    Fig. 52's architecture, for C images (a, b, c, ...):
+
+      - A single shared A-element layer (this module's
+        `PerceptronLayer`), exactly as in the two-image machine.
+      - A "lambda layer": each A-element j's output y_j branches to
+        *one amplifier per image class* -- coefficients
+        lambda_ja, lambda_jb, lambda_jc, ... -- not one shared A_j as
+        in the two-image machine. Across all m A-elements and C
+        classes that's m*C independent scalars, i.e. exactly
+        `class_weights`, shape (C, m): `class_weights[c, j]` is
+        lambda_jc.
+      - A "sigma layer": one adder per class, each summing that
+        class's amplifier outputs across *every* A-element:
+        sigma_b = sum_j lambda_jb * y_j. This is `scores`, i.e.
+        `class_weights @ y`.
+      - A comparison device, not a threshold: "the object is related
+        to that image whose adder produces the biggest output
+        signal" -- argmax over the adders, i.e. `predict_from_y`.
+
+    This architecture is book-literal, not an extension -- an earlier
+    pass through this module mislabeled it as "our own one-vs-rest
+    extension"; that was wrong about the *architecture* (which Fig.
+    52 specifies exactly) though right that the book's own *training*
+    rule differs from what was first implemented here -- see
+    `train_multiclass_book_algorithm_1`/`_2` below, which are the
+    literal rule, versus `train_multiclass_ovr_symmetric`, which is
+    the genuine extension (a standard, but not book-attested,
+    symmetric multiclass-perceptron update).
     """
 
     layer: PerceptronLayer
@@ -342,19 +384,75 @@ class MulticlassPerceptron:
         return self.classes[idx]
 
 
-def train_multiclass_algorithm_2(
+def _class_index(model: MulticlassPerceptron) -> dict:
+    return {int(c): i for i, c in enumerate(model.classes)}
+
+
+def train_multiclass_book_algorithm_1(
     model: MulticlassPerceptron,
     X: Array,
     labels: Array,
     step: float = 1.0,
 ) -> List[int]:
-    """Our one-vs-rest extension of algorithm 2: on an error, increase
-    the true class's weights on excited A-elements and decrease the
-    (wrongly) predicted class's weights on excited A-elements -- the
-    standard multiclass-perceptron generalization of the book's
-    two-image error-correction rule.
+    """Book-literal algorithm 1 for Fig. 52 (sec. 1 footnote,
+    p. 82): "the coefficients lambda_j ... can only be increased. In
+    algorithms of the first type, the lambda_j corresponding to a
+    given figure are increased at each step" -- unconditionally, on
+    every presentation, whether or not the current response is
+    already correct. Only the *shown* class's amplifiers move, and
+    only upward; no other class's amplifiers are touched, and
+    nothing is ever decreased.
     """
-    class_index = {int(c): i for i, c in enumerate(model.classes)}
+    class_index = _class_index(model)
+    correctness = []
+    for x, label in zip(X, labels):
+        y = model.layer.activate(x)
+        pred = model.predict_from_y(y)
+        correctness.append(int(pred == label))
+        idx = class_index[int(label)]
+        model.class_weights[idx] += step * y
+    return correctness
+
+
+def train_multiclass_book_algorithm_2(
+    model: MulticlassPerceptron,
+    X: Array,
+    labels: Array,
+    step: float = 1.0,
+) -> List[int]:
+    """Book-literal algorithm 2 for Fig. 52 (same footnote): "in
+    algorithms of the second type the coefficients are increased in
+    exactly the same fashion but only when the Perceptron's response
+    is incorrect." Same increase-only, shown-class-only update as
+    algorithm 1, gated on an incorrect response.
+    """
+    class_index = _class_index(model)
+    correctness = []
+    for x, label in zip(X, labels):
+        y = model.layer.activate(x)
+        pred = model.predict_from_y(y)
+        correct = int(pred == label)
+        correctness.append(correct)
+        if not correct:
+            idx = class_index[int(label)]
+            model.class_weights[idx] += step * y
+    return correctness
+
+
+def train_multiclass_ovr_symmetric(
+    model: MulticlassPerceptron,
+    X: Array,
+    labels: Array,
+    step: float = 1.0,
+) -> List[int]:
+    """Our own extension, NOT book content: the standard symmetric
+    multiclass-perceptron update. On an error, increase the true
+    class's weights on excited A-elements *and* decrease the
+    (wrongly) predicted class's weights on excited A-elements --
+    unlike the book's Fig. 52 rule, which only ever increases the
+    shown class's own amplifiers and never touches a competitor's.
+    """
+    class_index = _class_index(model)
     correctness = []
     for x, label in zip(X, labels):
         y = model.layer.activate(x)

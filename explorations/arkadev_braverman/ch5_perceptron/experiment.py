@@ -16,11 +16,16 @@ Four things come out of this, matching the chapter's own structure:
   3. `run_ablation_curve` -- held-out reliability vs. number of
      switched-off A-elements on an already-trained Perceptron, the
      analogue of Fig. 58.
-  4. `run_multiclass_comparison` -- the one-vs-rest extension
-     (perceptron.py's own extension, not book content) on the full
-     10-digit problem, reported alongside Ch. 3's and Ch. 4's own
-     final numbers for a same-corpus cross-chapter comparison, since
-     the book itself claims (sec. 4) that the Perceptron and the
+  4. `run_multiclass_comparison` -- Fig. 52's multi-image machine
+     (book-literal architecture; see `perceptron.py`'s
+     `MulticlassPerceptron` docstring for the correction of an
+     earlier mislabeling of this as "our own extension") on the full
+     10-digit problem, run under all three training rules
+     (`train_multiclass_book_algorithm_1`/`_2`, book-literal, and
+     `train_multiclass_ovr_symmetric`, our own addition) -- reported
+     alongside Ch. 3's and Ch. 4's own final numbers for a
+     same-corpus cross-chapter comparison, since the book itself
+     claims (sec. 4) that the Perceptron and the
      potentials/dissecting-planes algorithms are close cousins.
 """
 
@@ -45,7 +50,9 @@ from perceptron import (  # noqa: E402
     rolling_reliability,
     train_algorithm_1,
     train_algorithm_2,
-    train_multiclass_algorithm_2,
+    train_multiclass_book_algorithm_1,
+    train_multiclass_book_algorithm_2,
+    train_multiclass_ovr_symmetric,
 )
 
 MAX_INTENSITY = 16.0
@@ -219,14 +226,18 @@ def run_ablation_curve(
 
 
 def run_multiclass_comparison(
-    codes: np.ndarray, labels: np.ndarray, n_epochs: int = 1
+    codes: np.ndarray,
+    labels: np.ndarray,
+    train_fn,
+    n_epochs: int = 1,
 ):
-    """Full 10-digit one-vs-rest Perceptron, held-out accuracy over
-    several trials -- our own multiclass extension, reported for
-    cross-chapter comparison against Ch. 3/Ch. 4's own final numbers
-    (see notes.md), since the book itself (sec. 4) claims the
-    Perceptron and the potentials/dissecting-planes algorithms are
-    close cousins.
+    """Full 10-digit multiclass Perceptron, held-out accuracy over
+    several trials, for a given training rule (`train_fn`, one of
+    `train_multiclass_book_algorithm_1`, `_book_algorithm_2`, or
+    `_ovr_symmetric`) -- reported for cross-chapter comparison
+    against Ch. 3/Ch. 4's own final numbers (see notes.md), since the
+    book itself (sec. 4) claims the Perceptron and the
+    potentials/dissecting-planes algorithms are close cousins.
 
     `n_epochs` controls how many passes over the same training set
     are made (each in a freshly-shuffled order). The book's own
@@ -263,9 +274,7 @@ def run_multiclass_comparison(
         model = MulticlassPerceptron.new(layer, classes)
         for _ in range(n_epochs):
             order = rng.permutation(len(train_idx))
-            train_multiclass_algorithm_2(
-                model, codes[train_idx][order], labels[train_idx][order]
-            )
+            train_fn(model, codes[train_idx][order], labels[train_idx][order])
 
         preds = model.predict_batch(codes[test_idx])
         accs.append(float(np.mean(preds == labels[test_idx])))
@@ -359,21 +368,39 @@ def main():
 
     print()
     print(
-        "=== Multiclass (one-vs-rest extension), all 10 digits, "
-        "single pass ==="
+        "=== Multiclass, all 10 digits: book-literal vs. our "
+        "extension (1 pass) ==="
     )
-    mean_acc, std_acc = run_multiclass_comparison(codes, labels, n_epochs=1)
-    print(f"Held-out accuracy: {mean_acc * 100:.1f}% +/- {std_acc * 100:.1f}%")
+    rules = [
+        (
+            "book algorithm 1 (unconditional, increase-only)",
+            train_multiclass_book_algorithm_1,
+        ),
+        (
+            "book algorithm 2 (error-correcting, increase-only)",
+            train_multiclass_book_algorithm_2,
+        ),
+        (
+            "our extension (symmetric multiclass perceptron)",
+            train_multiclass_ovr_symmetric,
+        ),
+    ]
+    for name, fn in rules:
+        mean_acc, std_acc = run_multiclass_comparison(
+            codes, labels, fn, n_epochs=1
+        )
+        print(f"  {name}: {mean_acc * 100:.1f}% +/- {std_acc * 100:.1f}%")
 
     print()
     print(
-        "=== Multiclass (one-vs-rest extension), all 10 digits, "
-        "5 passes ==="
+        "=== Multiclass, all 10 digits: book-literal vs. our "
+        "extension (5 passes) ==="
     )
-    mean_acc5, std_acc5 = run_multiclass_comparison(codes, labels, n_epochs=5)
-    print(
-        f"Held-out accuracy: {mean_acc5 * 100:.1f}% +/- {std_acc5 * 100:.1f}%"
-    )
+    for name, fn in rules:
+        mean_acc, std_acc = run_multiclass_comparison(
+            codes, labels, fn, n_epochs=5
+        )
+        print(f"  {name}: {mean_acc * 100:.1f}% +/- {std_acc * 100:.1f}%")
 
 
 if __name__ == "__main__":

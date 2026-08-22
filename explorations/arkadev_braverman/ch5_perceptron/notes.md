@@ -16,20 +16,37 @@ n=400, m=512, 20 connections per A-element — a small fraction of all
 receptors, not all of them, unlike Ch. 3's dissecting planes which
 used every coordinate). Each A-element fires (y_j=1) if its weighted
 receptor sum clears a shared threshold theta, otherwise 0. A single
-R-element sums A_j*y_j over all A-elements and outputs 1 if that sum
-is >= 0. Two training algorithms, both restricted to a two-image
-problem, examples shown one at a time:
+R-element sums lambda_j*y_j over all A-elements and outputs 1 if that
+sum is >= 0 (book's actual symbol is lambda_j, not A_j — the
+extracted OCR text renders lambda as "A" throughout this passage;
+this was only caught by checking the page image directly, see the
+correction under "Multiclass" in Results below). Two training
+algorithms, both restricted to a two-image problem, examples shown
+one at a time:
 
   - **Algorithm 1** (unconditional): every presentation nudges the
-    A_j of *excited* A-elements in a fixed direction determined only
-    by which image was shown — correct or not.
+    lambda_j of *excited* A-elements in a fixed direction determined
+    only by which image was shown — correct or not.
   - **Algorithm 2** (error-correcting — the classic perceptron rule):
-    A_j changes *only* on incorrect steps, in the direction that
+    lambda_j changes *only* on incorrect steps, in the direction that
     would have produced the right answer.
 
 Book's own result (Figs. 53/54, MARK-1 on 8 Roman letters): algorithm
 1 plateaus near 70% after 20-25 samples/letter and never improves
 further; algorithm 2 reaches ~100% after 35-40 samples/letter.
+
+Sec. 1 goes on to describe a multi-image extension for more than two
+classes (Fig. 52, p. 79): A-elements stay shared across classes, but
+each A-element's output branches to one amplifier *per class*
+(lambda_ja, lambda_jb, lambda_jc, ...), each class's amplifiers feed
+one adder (sigma_a, sigma_b, sigma_c, ...) summing over every
+A-element, and a comparison device picks the class whose adder is
+largest. A footnote (p. 82) specifies training for this case too:
+coefficients "can only be increased" — algorithm 1 increases the
+*shown* class's amplifiers on every step; algorithm 2 does the same
+only on error. See "Multiclass" under Results for how this was
+initially missed (both the figure's detail and the footnote) and
+what implementing it literally revealed.
 
 **Sec. 2 (Functions Performed by the A-elements).** Purely
 geometric: fixing an A-element's connections defines a hyperplane in
@@ -79,17 +96,20 @@ classifier, is what's actually checked against real digits below.
   - `evaluate_ablation` — sec. 4/Fig. 58's robustness check: zero out
     a random subset of A-elements (both their receptor wiring and
     their R-element weight) and re-measure held-out accuracy.
-  - `MulticlassPerceptron` / `train_multiclass_algorithm_2` — **our
-    own one-vs-rest extension** to more than two classes, sharing one
-    random A-element layer across per-class weight vectors. The book
-    only gestures at multi-image Perceptrons (Fig. 52, "several
-    groups of A-elements... analogous to" the two-image case) without
-    fully specifying a training rule for them, so this is flagged as
-    an extension, not literal book content, and used only for the
-    10-digit cross-chapter comparison below.
+  - `MulticlassPerceptron` — Fig. 52's multi-image architecture
+    (book-literal, not an extension: shared A-element layer, one
+    amplifier lambda_jc per (A-element, class) pair, one adder
+    sigma_c per class, argmax comparison — see "Correction" under
+    Results below for how an earlier pass mischaracterized this).
+    Trained by `train_multiclass_book_algorithm_1` / `_2` (the
+    book's own increase-only rules, from a footnote easy to miss on
+    a first pass through the OCR text) or `train_multiclass_ovr_
+    symmetric` (**our actual extension**: the standard symmetric
+    multiclass-perceptron update, decreasing a wrongly-predicted
+    class's amplifiers too — something neither book rule does).
 - `experiment.py` — four checks against real digits, mirroring the
-  chapter's own structure (Figs. 53/54, Fig. 58, plus our own
-  multiclass cross-check).
+  chapter's own structure (Figs. 53/54, Fig. 58, plus a three-way
+  multiclass training-rule comparison).
 
 ## Results (real digits, `load_digits`, binary receptor codes
 thresholded at intensity 0.3; algorithm-comparison and ablation
@@ -201,31 +221,74 @@ planes and less overlap between them to begin with, losing any given
 fraction removes proportionally more of the *distinguishing*
 structure.
 
-### Multiclass one-vs-rest, all 10 digits (our extension, not book
-content — for cross-chapter comparison only)
+### Multiclass, all 10 digits (Fig. 52's actual architecture — see
+correction below)
 
-| training | held-out accuracy |
-|---|---|
-| single pass over 200 examples/class | 81.0% +/- 6.2% |
-| 5 passes over the same 200 examples/class | 88.0% +/- 2.4% |
+**Correction to an earlier pass through this file**: the multiclass
+architecture used here (shared A-element layer, one amplifier per
+(A-element, class) pair, one adder per class, argmax comparison) was
+previously described as "our own one-vs-rest extension, not book
+content." That was wrong. Rendering page 79 of the scan directly
+(the OCR text layer garbles this passage badly — lambda renders as
+"A", sigma as "2" — so this wasn't visible in the extracted text)
+shows Fig. 52 specifies exactly this architecture, down to the
+per-class amplifiers (book's own notation: lambda_ja, lambda_jb,
+lambda_jc for A-element j's three class-amplifiers) and the adders
+(sigma_a, sigma_b, sigma_c). What genuinely *is* new here is only the
+*training rule* — and even there, a footnote on p. 82 (also missed
+on the first pass, since it sits attached to a different paragraph)
+turns out to specify one: coefficients "can only be increased";
+algorithm 1 increases the *shown* class's amplifiers on every step,
+algorithm 2 does the same only on error. Neither book rule ever
+decreases a competing class's amplifiers.
 
-**Divergence worth flagging**: read completely literally ("training
-... is performed in a sequence of steps" showing one example at a
-time), a single pass through the data underperforms Ch. 3's
+`perceptron.py` now implements all three rules —
+`train_multiclass_book_algorithm_1`, `_book_algorithm_2` (both
+book-literal), and `train_multiclass_ovr_symmetric` (the actual
+extension: the standard symmetric multiclass-perceptron update,
+increasing the true class and decreasing the wrongly-predicted one)
+— run head to head:
+
+| training rule | 1 pass | 5 passes |
+|---|---|---|
+| book algorithm 1 (unconditional, increase-only) | 47.8% +/- 13.6% | 47.8% +/- 13.6% |
+| book algorithm 2 (error-correcting, increase-only) | 72.2% +/- 6.0% | 80.6% +/- 6.1% |
+| our extension (symmetric multiclass perceptron) | 81.0% +/- 6.2% | 88.0% +/- 2.4% |
+
+**Book algorithm 1's identical accuracy at 1 and 5 passes is not a
+coincidence — it's provable, and was checked directly.** Because the
+rule only ever *increases* the shown class's amplifiers, by a fixed
+amount, on *every* presentation regardless of correctness, repeating
+the same fixed training set E times (each in a freshly-shuffled
+order) scales every class's final weight vector by exactly E — checked
+directly: the 5-pass weight matrix came out to be *exactly* 5.0x the
+1-pass matrix, entry for entry, and the two models' predictions on
+held-out data were bit-for-bit identical. Since argmax is invariant
+to a uniform positive rescaling, more epochs over the *same* data
+literally cannot change book algorithm 1's decisions. Its only lever
+for improvement is more/new examples, never repetition — a real
+limitation of an unconditional, increase-only rule that the
+two-image algorithm 1 (sec. 1, symmetric +/-) doesn't share in the
+same way, since a symmetric update's *sign* pattern (not just
+magnitude) is what an R-element's threshold responds to, though it's
+similarly insensitive to the *order* of a fixed, unweighted stream.
+
+**Book algorithm 2 breaks the invariance and does improve with
+epochs** (72.2% -> 80.6%), because gating on the current prediction
+means later passes see a partially-corrected model and only touch
+the examples it's still getting wrong — the same mechanism that
+makes error-correction work in the two-image case.
+
+**Our symmetric extension outperforms both book rules at every
+epoch count**, plausibly because it's the only one of the three that
+ever gives a class explicit negative evidence (decreasing a
+wrongly-predicted class's amplifiers) rather than relying solely on
+other classes' amplifiers failing to grow as fast. Ch. 3's
 dissecting-planes (~92% at a comparable training size) and Ch. 4's
-potentials method (~93.6%) by a real margin. The book's text never
-actually says training is limited to one pass, though, and repeating
-the same training set for several epochs — each in a freshly-shuffled
-order — closes most of that gap (81.0% -> 88.0%). This reads as a
-genuine property of the error-correcting perceptron rule (it needs
-to *see* an error to correct it, and one-vs-rest 10-way separation on
-512 shared, only-20-connections-wide A-elements needs more corrective
-passes to shake out than the direct plane-fitting or potential-mean
-approaches of Ch. 3/4), not an artifact of a bad hyperparameter — a
-quick sweep (not shown in `experiment.py`, run interactively) found
-more A-elements alone (1024 vs. 512) barely moved single-pass
-accuracy, while more inputs per A-element (32 vs. 20) helped
-noticeably more than more A-elements did.
+potentials method (~93.6%) still edge out even our best multiclass
+number (88.0%) — worth another look (theta/inputs-per-element sweep,
+flagged already below) rather than assumed to be a hard ceiling.
+
 
 ## Verification against sec. 3's worked example
 
@@ -256,16 +319,14 @@ table to check exact magnitudes against.
   used in the ablation experiment, since our receptor field is much
   smaller) wasn't tried, and might change the degradation curve's
   shape.
-- The one-vs-rest multiclass extension is explicitly *ours*, not the
-  book's; the book's own multi-image sketch (Fig. 52, shared
-  A-elements feeding several adders, or binary-coded R-element
-  outputs) was not implemented as literally described, since it
-  doesn't specify a training rule precisely enough to reconstruct
-  without guessing.
+- The one-vs-rest *architecture* (Fig. 52) is now implemented
+  literally, and so are its own two training rules — see the
+  correction under "Multiclass" in Results. `train_multiclass_ovr_
+  symmetric` remains the one genuine addition in this module.
 - theta (the shared A-element threshold) was fixed at 0 without any
   sweep, mirroring alpha's treatment in Ch. 4; a proper sweep is a
-  natural next check, as is a sweep of inputs-per-A-element (the
-  quick interactive check above suggests this matters more than raw
+  natural next check, as is a sweep of inputs-per-A-element (an
+  earlier interactive check found this matters more than raw
   A-element count for multiclass separation).
 - The 150-presentations/class long-run check (algorithm comparison
   section above) resolved the 8-vs-9 ordering but wasn't extended to
@@ -274,3 +335,11 @@ table to check exact magnitudes against.
   length, held fixed A-element budget" curve per digit pair, closer
   in spirit to Ch. 3/4's own reliability-vs-N curves than the
   fixed-length runs used here.
+- The epoch-invariance proof for book algorithm 1 (Multiclass,
+  Results) generalizes beyond this one experiment: any unconditional,
+  increase-only update over a *fixed, finite* training set gains
+  nothing from repeated passes, only from new examples. Worth keeping
+  in mind if a later stage's own "more training" checks use repeated
+  epochs over a small fixed set rather than genuinely new data — the
+  two can look superficially similar but behave very differently
+  depending on whether the update rule is error-gated.
