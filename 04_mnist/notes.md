@@ -91,3 +91,59 @@ before drawing a firm conclusion - flagged here rather than resolved.
   batch_size` as its own variable so the slice itself
   (`order[start:end]`) has no embedded expression, which black
   and flake8 both accept.
+
+## Addendum: memory scaling - where does this break on a real machine?
+
+Follow-up question from conversation (full chat:
+https://claude.ai/share/8e4a698f-9427-4101-886d-0bd629b17320): given
+a 32 GB machine, at what hidden layer size does this specific
+training scheme become memory-infeasible?
+
+Measured (not estimated) actual peak process RSS at 5 hidden sizes,
+each in its own isolated subprocess for a clean reading, on this
+sandbox's ~4 GB limit (see `memory_scaling.py`):
+
+| Hidden size | Peak RSS |
+|-------------|----------|
+| 128         | 0.64 GB  |
+| 512         | 0.91 GB  |
+| 1,024       | 1.51 GB  |
+| 2,048       | 2.73 GB  |
+| 3,000       | 3.86 GB  |
+| 4,096       | OOM-killed on this sandbox |
+
+Least-squares fit: `peak_GB = 0.392 + 0.001145 * hidden_size`.
+Extrapolated to a 32 GB machine (leaving headroom for the OS and
+other applications lowers the practical ceiling):
+
+| Usable ceiling | Hidden size where it's hit |
+|----------------|------------------------------|
+| 32 GB (no headroom) | ~27,600 |
+| 28 GB          | ~24,100 |
+| 24 GB          | ~20,600 |
+
+**The important caveat, not just the number**: this scaling is
+almost entirely an artifact of one specific inefficiency in
+`mnist_net.py`'s `fit()` - it calls `accuracy()` on the *entire*
+50,000-example training set (and the 10,000-example validation set)
+every single epoch, each call materializing one `(n_examples,
+hidden)` activation array in a single matvec. The model's actual
+parameters at hidden=27,600 total well under 1 GB - the transient
+full-dataset activation array is what dominates, not the network
+itself. Batching that accuracy check (e.g. 1000 rows at a time,
+same pattern as the minibatch training loop already uses) would
+collapse this cost by roughly two orders of magnitude and push the
+real memory wall far higher - this is a code-design choice, not a
+fact about how large an MLP hidden layer can be.
+
+More importantly: **time, not memory, is the real practical wall.**
+Forward/backward cost scales with hidden size too, and at
+hidden=512 a single epoch already took ~65s on this sandbox's single
+weak core. A hidden=20,000 network would need on the order of 40x
+that per epoch - tens of minutes per epoch, hours for a full run -
+even before considering that a 20,000-unit hidden layer is wild
+overkill for a 784-input, 10-class problem regardless of available
+RAM. The honest answer to "where does this leave the solvable
+realm" is: long before 32 GB of RAM is threatened, the problem stops
+being worth solving this way at all.
+
