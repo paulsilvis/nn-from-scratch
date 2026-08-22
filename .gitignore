@@ -5,6 +5,8 @@
 # datasets
 04_mnist/data/*
 !04_mnist/data/.gitkeep
+07_tiny_gpt/data/*
+!07_tiny_gpt/data/.gitkeep
 
 # python
 __pycache__/

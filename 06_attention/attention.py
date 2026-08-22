@@ -38,8 +38,10 @@ def softmax_rows(s):
     return exp_s / exp_s.sum(axis=-1, keepdims=True)
 
 
-def attention_forward(X, W_Q, W_K, W_V):
-    """X: (batch, seq_len, d_model). Returns cache with everything
+def attention_forward(X, W_Q, W_K, W_V, mask=None):
+    """X: (batch, seq_len, d_model). mask, if given: (seq_len,
+    seq_len) additive mask (0 or -inf), broadcast over batch - used
+    for causal masking in stage 7. Returns cache with everything
     attention_backward needs.
     """
     d_k = W_Q.shape[1]
@@ -47,6 +49,8 @@ def attention_forward(X, W_Q, W_K, W_V):
     K = X @ W_K
     V = X @ W_V
     S = np.einsum("bid,bjd->bij", Q, K) / np.sqrt(d_k)
+    if mask is not None:
+        S = S + mask
     A = softmax_rows(S)
     output = A @ V
     cache = (X, Q, K, V, A)
