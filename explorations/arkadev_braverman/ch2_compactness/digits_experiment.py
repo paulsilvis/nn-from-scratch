@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Chapter 2's compactness hypothesis, tested on real handwriting.
 
 Loads scikit-learn's bundled `load_digits` corpus (1797 real
